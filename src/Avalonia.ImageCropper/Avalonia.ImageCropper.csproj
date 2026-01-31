@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
 
     <!-- NuGet Package Configuration -->
-    <PackageId>Avalonia.ImageCropper</PackageId>
+    <PackageId>AvaloniaImageCropper</PackageId>
     <Version>1.0.0</Version>
     <Authors>Josef Nobach</Authors>
     <Company>Josef Nobach</Company>
