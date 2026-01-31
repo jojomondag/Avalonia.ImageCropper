@@ -15,8 +15,8 @@
     <Description>A powerful, customizable circular image cropper control for Avalonia UI. Features include drag-to-move, resize handles, rotation, EXIF orientation support, live preview, and image gallery.</Description>
     <PackageTags>avalonia;image;cropper;crop;circular;profile;avatar;ui;control</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/josefnobach/Avalonia.ImageCropper</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/josefnobach/Avalonia.ImageCropper</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/jojomondag/Avalonia.ImageCropper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jojomondag/Avalonia.ImageCropper</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 

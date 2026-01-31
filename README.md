@@ -163,4 +163,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-This package was extracted and adapted from the [TeachersLittleHelper](https://github.com/josefnobach/TeachersLittleHelper) project.
+This package was extracted and adapted from the [TeachersLittleHelper](https://github.com/jojomondag/TeachersLittleHelper) project.
