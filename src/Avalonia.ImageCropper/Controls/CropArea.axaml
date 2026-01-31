@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="Avalonia.ImageCropper.Controls.CropArea">
+
+    <UserControl.Styles>
+        <Style Selector="Border.Handle">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Padding="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <Border Name="MainImageArea"
+                BorderBrush="#333333"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="White"
+                Cursor="Hand"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+            <Grid Name="ImageContainer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="False">
+
+                <!-- Background when no image -->
+                <Grid Name="BackgroundPattern"
+                      IsVisible="True"
+                      Background="Transparent"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <mi:MaterialIcon Kind="ImagePlus" Width="48" Height="48" Foreground="#888888"/>
+                        <TextBlock Text="Click to select an image"
+                                   Foreground="#888888"
+                                   FontSize="14"
+                                   TextAlignment="Center"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Image display -->
+                <Image Name="MainImage"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       IsVisible="False"/>
+
+                <!-- Crop overlay -->
+                <Grid Name="CropOverlay"
+                      IsVisible="False"
+                      Background="Transparent"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      ClipToBounds="False">
+
+                    <!-- Overlay with cutout -->
+                    <Path Name="OverlayCutout"
+                          Fill="Black"
+                          Opacity="0.4"
+                          StrokeThickness="0"
+                          IsHitTestVisible="False"/>
+
+                    <!-- Selection group -->
+                    <Grid Name="SelectionGroup"
+                          Width="200"
+                          Height="200"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Top">
+                        <Border Name="CropSelection"
+                                BorderBrush="White"
+                                BorderThickness="3"
+                                Background="Transparent"
+                                CornerRadius="100"
+                                Cursor="SizeAll"
+                                Margin="-10"
+                                Padding="10"/>
+                        <Canvas Name="HandlesLayer">
+                            <Border Name="HandleTopLeft" Classes="Handle"/>
+                            <Border Name="HandleTopRight" Classes="Handle"/>
+                            <Border Name="HandleBottomLeft" Classes="Handle"/>
+                            <Border Name="HandleBottomRight" Classes="Handle"/>
+                        </Canvas>
+                    </Grid>
+                </Grid>
+
+                <!-- Hover hint -->
+                <Border Name="HoverHintOverlay"
+                        IsVisible="False"
+                        Background="#CC000000"
+                        CornerRadius="8"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,16"
+                        Padding="16,12"
+                        IsHitTestVisible="False"
+                        ZIndex="1000">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <mi:MaterialIcon Kind="ImageEdit" Width="20" Height="20" Foreground="White"/>
+                        <TextBlock Text="Click to change image"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="Medium"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- NuGet Package Configuration -->
+    <PackageId>Avalonia.ImageCropper</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Josef Nobach</Authors>
+    <Company>Josef Nobach</Company>
+    <Product>Avalonia Image Cropper</Product>
+    <Description>A powerful, customizable circular image cropper control for Avalonia UI. Features include drag-to-move, resize handles, rotation, EXIF orientation support, live preview, and image gallery.</Description>
+    <PackageTags>avalonia;image;cropper;crop;circular;profile;avatar;ui;control</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/josefnobach/Avalonia.ImageCropper</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/josefnobach/Avalonia.ImageCropper</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Generate XML documentation -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Enable source link for debugging -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="MetadataExtractor" Version="2.8.1" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.1.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

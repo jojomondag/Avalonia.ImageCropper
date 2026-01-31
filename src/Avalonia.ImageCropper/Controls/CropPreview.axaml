@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="340" d:DesignHeight="300"
+             x:Class="Avalonia.ImageCropper.Controls.CropPreview">
+
+    <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            CornerRadius="8"
+            Padding="16">
+        <StackPanel Spacing="16">
+            <!-- Preview Image -->
+            <Border Name="PreviewBorder"
+                    Width="140"
+                    Height="140"
+                    CornerRadius="70"
+                    ClipToBounds="True"
+                    Background="#E0E0E0"
+                    HorizontalAlignment="Center">
+                <Image Name="PreviewImage"
+                       Stretch="UniformToFill"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+            </Border>
+
+            <!-- Action Buttons -->
+            <StackPanel Name="ActionsPanel"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="8"
+                        IsVisible="False">
+
+                <!-- Back Button -->
+                <Button Name="BackButton"
+                        Classes="secondary"
+                        ToolTip.Tip="Back">
+                    <mi:MaterialIcon Kind="ArrowLeft" Width="20" Height="20"/>
+                </Button>
+
+                <!-- Rotate Left -->
+                <Button Name="RotateLeftButton"
+                        Classes="secondary"
+                        ToolTip.Tip="Rotate Left">
+                    <mi:MaterialIcon Kind="RotateLeft" Width="20" Height="20"/>
+                </Button>
+
+                <!-- Rotate Right -->
+                <Button Name="RotateRightButton"
+                        Classes="secondary"
+                        ToolTip.Tip="Rotate Right">
+                    <mi:MaterialIcon Kind="RotateRight" Width="20" Height="20"/>
+                </Button>
+
+                <!-- Reset -->
+                <Button Name="ResetButton"
+                        Classes="secondary"
+                        ToolTip.Tip="Reset">
+                    <mi:MaterialIcon Kind="Refresh" Width="20" Height="20"/>
+                </Button>
+
+                <!-- Save -->
+                <Button Name="SaveButton"
+                        Classes="primary"
+                        ToolTip.Tip="Save">
+                    <mi:MaterialIcon Kind="Check" Width="20" Height="20"/>
+                </Button>
+
+                <!-- Cancel -->
+                <Button Name="CancelButton"
+                        Classes="secondary"
+                        ToolTip.Tip="Cancel">
+                    <mi:MaterialIcon Kind="Close" Width="20" Height="20"/>
+                </Button>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

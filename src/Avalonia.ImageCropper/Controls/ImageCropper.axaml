@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Avalonia.ImageCropper.Controls"
+             xmlns:vm="using:Avalonia.ImageCropper.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="Avalonia.ImageCropper.Controls.ImageCropper"
+             x:DataType="vm:ImageCropperViewModel"
+             Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+
+    <Grid Name="ContentGrid" Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Main Image Display Area -->
+        <controls:CropArea Grid.Column="0"
+                           Grid.Row="0"
+                           Grid.RowSpan="2"
+                           Name="CropAreaControl"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Stretch" />
+
+        <!-- Crop Preview -->
+        <controls:CropPreview Grid.Row="0"
+                              Grid.Column="1"
+                              Name="CropPreviewControl"
+                              VerticalAlignment="Top"
+                              MinHeight="120" />
+
+        <!-- Image History/Gallery -->
+        <controls:ImageGallery Grid.Row="1"
+                               Grid.Column="1"
+                               Name="ImageGalleryControl"
+                               VerticalAlignment="Stretch" />
+    </Grid>
+</UserControl>
