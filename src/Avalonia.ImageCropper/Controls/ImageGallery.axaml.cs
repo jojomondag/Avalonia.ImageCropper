@@ -102,17 +102,27 @@ public partial class ImageGallery : UserControl
 
     private Control CreateImageCard(string path, Bitmap thumbnail)
     {
+        const int size = 70;
+        const int radius = size / 2;
+
+        // Outer border for the visible circular frame
         var border = new Border
         {
-            Width = 80,
-            Height = 80,
+            Width = size,
+            Height = size,
             Margin = new Thickness(4),
-            CornerRadius = new CornerRadius(8),
-            ClipToBounds = true,
+            CornerRadius = new CornerRadius(radius),
             Cursor = new Cursor(StandardCursorType.Hand),
             Background = Brushes.White,
             BorderBrush = Brushes.LightGray,
-            BorderThickness = new Thickness(1)
+            BorderThickness = new Thickness(2)
+        };
+
+        // Inner container to clip the image
+        var imageContainer = new Border
+        {
+            CornerRadius = new CornerRadius(radius - 2),
+            ClipToBounds = true
         };
 
         var image = new Image
@@ -121,7 +131,8 @@ public partial class ImageGallery : UserControl
             Stretch = Stretch.UniformToFill
         };
 
-        border.Child = image;
+        imageContainer.Child = image;
+        border.Child = imageContainer;
         border.Tag = path;
 
         border.PointerPressed += (s, e) =>
@@ -131,22 +142,18 @@ public partial class ImageGallery : UserControl
                 ImageSelected?.Invoke(this, path);
                 e.Handled = true;
             }
-            else if (e.GetCurrentPoint(border).Properties.IsRightButtonPressed)
-            {
-                // Could add context menu for delete
-            }
         };
 
         border.PointerEntered += (s, e) =>
         {
             border.BorderBrush = Brushes.DodgerBlue;
-            border.BorderThickness = new Thickness(2);
+            border.BorderThickness = new Thickness(3);
         };
 
         border.PointerExited += (s, e) =>
         {
             border.BorderBrush = Brushes.LightGray;
-            border.BorderThickness = new Thickness(1);
+            border.BorderThickness = new Thickness(2);
         };
 
         return border;

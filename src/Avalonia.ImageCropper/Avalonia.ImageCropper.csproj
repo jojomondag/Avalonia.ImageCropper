@@ -8,7 +8,7 @@
 
     <!-- NuGet Package Configuration -->
     <PackageId>AvaloniaImageCropper</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>Josef Nobach</Authors>
     <Company>Josef Nobach</Company>
     <Product>Avalonia Image Cropper</Product>

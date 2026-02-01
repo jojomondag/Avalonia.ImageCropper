@@ -8,13 +8,14 @@
 
     <UserControl.Styles>
         <Style Selector="Border.Handle">
-            <Setter Property="Width" Value="16"/>
-            <Setter Property="Height" Value="16"/>
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="Height" Value="14"/>
             <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="White"/>
-            <Setter Property="BorderThickness" Value="2"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderBrush" Value="#333333"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BoxShadow" Value="0 1 3 0 #40000000"/>
         </Style>
     </UserControl.Styles>
 
@@ -25,9 +26,10 @@
                 CornerRadius="8"
                 Background="White"
                 Cursor="Hand"
+                ClipToBounds="True"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch">
-            <Grid Name="ImageContainer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="False">
+            <Grid Name="ImageContainer" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="True">
 
                 <!-- Background when no image -->
                 <Grid Name="BackgroundPattern"
@@ -58,7 +60,7 @@
                       Background="Transparent"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch"
-                      ClipToBounds="False">
+                      ClipToBounds="True">
 
                     <!-- Overlay with cutout -->
                     <Path Name="OverlayCutout"
@@ -75,13 +77,11 @@
                           VerticalAlignment="Top">
                         <Border Name="CropSelection"
                                 BorderBrush="White"
-                                BorderThickness="3"
+                                BorderThickness="2"
                                 Background="Transparent"
                                 CornerRadius="100"
-                                Cursor="SizeAll"
-                                Margin="-10"
-                                Padding="10"/>
-                        <Canvas Name="HandlesLayer">
+                                Cursor="SizeAll"/>
+                        <Canvas Name="HandlesLayer" ClipToBounds="False">
                             <Border Name="HandleTopLeft" Classes="Handle"/>
                             <Border Name="HandleTopRight" Classes="Handle"/>
                             <Border Name="HandleBottomLeft" Classes="Handle"/>

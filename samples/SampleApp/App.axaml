@@ -4,5 +4,6 @@
              RequestedThemeVariant="Default">
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://Material.Icons.Avalonia/App.xaml" />
     </Application.Styles>
 </Application>

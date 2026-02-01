@@ -97,10 +97,7 @@ public partial class CropArea : UserControl
         {
             mainArea.PointerPressed += (s, e) =>
             {
-                if (_currentBitmap == null)
-                {
-                    ImageAreaClicked?.Invoke(this, EventArgs.Empty);
-                }
+                ImageAreaClicked?.Invoke(this, EventArgs.Empty);
             };
         }
     }
@@ -624,6 +621,11 @@ public partial class CropArea : UserControl
         if (IsOnResizeEdge(distance, _cropArea.Width / 2))
         {
             StartResize(e, deltaX, deltaY);
+        }
+        else if (distance > _cropArea.Width / 2 + 10)
+        {
+            // Click outside the crop area - allow selecting a new image
+            ImageAreaClicked?.Invoke(this, EventArgs.Empty);
         }
     }
 
