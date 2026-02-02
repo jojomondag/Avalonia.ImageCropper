@@ -12,7 +12,7 @@
     <Authors>Josef Nobach</Authors>
     <Company>Josef Nobach</Company>
     <Product>Avalonia Image Cropper</Product>
-    <Description>A powerful, customizable circular image cropper control for Avalonia UI. Features include drag-to-move, resize handles, rotation, EXIF orientation support, live preview, and image gallery.</Description>
+    <Description>A powerful, customizable circular image cropper control for Avalonia UI. Features include drag-to-move, pinch-to-zoom, rotation, live preview, and image gallery.</Description>
     <PackageTags>avalonia;image;cropper;crop;circular;profile;avatar;ui;control</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/jojomondag/Avalonia.ImageCropper</PackageProjectUrl>
@@ -34,7 +34,6 @@
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-    <PackageReference Include="MetadataExtractor" Version="2.8.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="2.1.10" />
   </ItemGroup>
 

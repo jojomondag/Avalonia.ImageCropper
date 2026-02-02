@@ -37,3 +37,6 @@ artifacts/
 
 # macOS
 .DS_Store
+
+# Windows reserved names
+nul

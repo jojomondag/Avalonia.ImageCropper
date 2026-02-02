@@ -1,12 +1,118 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:cropper="using:Avalonia.ImageCropper.Controls"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="SampleApp.MainWindow"
-        Title="Avalonia.ImageCropper - Sample App"
-        Width="1200"
-        Height="800"
+        Title="Image Cropper Sample App"
+        Width="1200" Height="800"
+        MinWidth="800" MinHeight="600"
         WindowStartupLocation="CenterScreen">
 
-    <cropper:ImageCropper x:Name="ImageCropperControl"/>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header with Options -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                Padding="16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="Avalonia Image Cropper"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="16"
+                            VerticalAlignment="Center">
+
+                    <!-- Crop Shape Toggle -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Shape:" VerticalAlignment="Center" />
+                        <ComboBox Name="CropShapeCombo"
+                                  SelectedIndex="0"
+                                  Width="120"
+                                  SelectionChanged="OnCropShapeChanged">
+                            <ComboBoxItem Content="Circle" />
+                            <ComboBoxItem Content="Square" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Output Size -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Output Size:" VerticalAlignment="Center" />
+                        <ComboBox Name="OutputSizeCombo"
+                                  SelectedIndex="1"
+                                  Width="100"
+                                  SelectionChanged="OnOutputSizeChanged">
+                            <ComboBoxItem Content="256" Tag="256" />
+                            <ComboBoxItem Content="512" Tag="512" />
+                            <ComboBoxItem Content="1024" Tag="1024" />
+                            <ComboBoxItem Content="2048" Tag="2048" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Show Gallery Toggle -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Gallery:" VerticalAlignment="Center" />
+                        <ToggleSwitch Name="ShowGalleryToggle"
+                                      IsChecked="True"
+                                      IsCheckedChanged="OnShowGalleryChanged" />
+                    </StackPanel>
+
+                    <!-- Allow Rotation Toggle -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Rotation:" VerticalAlignment="Center" />
+                        <ToggleSwitch Name="AllowRotationToggle"
+                                      IsChecked="True"
+                                      IsCheckedChanged="OnAllowRotationChanged" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Image Cropper Control -->
+        <cropper:ImageCropper Grid.Row="1"
+                              Name="ImageCropperControl"
+                              Margin="0" />
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Name="StatusText"
+                           Text="Click on the image area or select from the gallery to start"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Name="LastSavedText"
+                               Text=""
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 
 </Window>

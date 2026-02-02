@@ -4,9 +4,8 @@ using AvaloniaPath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using MetadataExtractor;
-using MetadataExtractor.Formats.Exif;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,6 +14,8 @@ namespace Avalonia.ImageCropper.Controls;
 
 /// <summary>
 /// The main crop area control that handles image display and crop selection.
+/// Instagram-style: fixed crop circle, pan/zoom/rotate the image underneath.
+/// Supports multi-touch gestures: pinch-to-zoom and two-finger rotation.
 /// </summary>
 public partial class CropArea : UserControl
 {
@@ -23,26 +24,36 @@ public partial class CropArea : UserControl
     private Bitmap? _currentBitmap;
     private Bitmap? _fullResolutionBitmap;
     private bool _isDragging;
-    private bool _isResizing;
-    private string? _activeHandle;
-    private Rect _cropArea;
-    private Rect _dragStartCropArea;
-    private Size _imageDisplaySize;
-    private Point _imageDisplayOffset;
     private Point _pointerStartPosition;
-    private double _rotationAngle;
-    private double _rotationStartAngle;
-    private double _rotationInitialAngle;
+    private Point _imageOffset;
+    private Point _dragStartOffset;
+    private double _imageScale = 1.0;
+    private double _imageRotation; // Continuous rotation in degrees
+    private double _cropCircleSize;
     private ImageCropperOptions _options = new();
     private DateTime _lastPreviewUpdate = DateTime.MinValue;
+
+    // Multi-touch gesture tracking
+    private readonly Dictionary<int, Point> _activePointers = new();
+    private double _gestureStartDistance;
+    private double _gestureStartAngle;
+    private double _gestureStartScale;
+    private double _gestureStartRotation;
+    private Point _gestureStartOffset;
+    private bool _isMultiTouchGesture;
+
+    // Border rotation
+    private bool _isRotating;
+    private double _rotateStartAngle;
+    private double _rotateStartRotation;
+    private bool _isHoveringBorder;
 
     private Grid? _backgroundPattern;
     private Image? _mainImage;
     private Grid? _cropOverlay;
     private AvaloniaPath? _overlayCutout;
-    private Grid? _selectionGroup;
-    private Border? _cropSelection;
-    private Border? _handleTL, _handleTR, _handleBL, _handleBR;
+    private Border? _cropCircle;
+    private Border? _interactionLayer;
 
     #endregion
 
@@ -67,6 +78,9 @@ public partial class CropArea : UserControl
 
     #region Constructor
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CropArea"/> class.
+    /// </summary>
     public CropArea()
     {
         InitializeComponent();
@@ -85,19 +99,18 @@ public partial class CropArea : UserControl
         _mainImage = this.FindControl<Image>("MainImage");
         _cropOverlay = this.FindControl<Grid>("CropOverlay");
         _overlayCutout = this.FindControl<AvaloniaPath>("OverlayCutout");
-        _selectionGroup = this.FindControl<Grid>("SelectionGroup");
-        _cropSelection = this.FindControl<Border>("CropSelection");
-        _handleTL = this.FindControl<Border>("HandleTopLeft");
-        _handleTR = this.FindControl<Border>("HandleTopRight");
-        _handleBL = this.FindControl<Border>("HandleBottomLeft");
-        _handleBR = this.FindControl<Border>("HandleBottomRight");
+        _cropCircle = this.FindControl<Border>("CropCircle");
+        _interactionLayer = this.FindControl<Border>("InteractionLayer");
 
         var mainArea = this.FindControl<Border>("MainImageArea");
         if (mainArea != null)
         {
             mainArea.PointerPressed += (s, e) =>
             {
-                ImageAreaClicked?.Invoke(this, EventArgs.Empty);
+                if (_currentBitmap == null)
+                {
+                    ImageAreaClicked?.Invoke(this, EventArgs.Empty);
+                }
             };
         }
     }
@@ -112,7 +125,7 @@ public partial class CropArea : UserControl
     public void SetOptions(ImageCropperOptions options)
     {
         _options = options;
-        UpdateCropShape();
+        UpdateCropCircle();
     }
 
     /// <summary>
@@ -135,25 +148,19 @@ public partial class CropArea : UserControl
     }
 
     /// <summary>
-    /// Rotates the image by the specified degrees.
+    /// Rotates the image by the specified degrees (adds to current rotation).
     /// </summary>
     public void Rotate(double degrees)
     {
-        if (_currentBitmap == null || _fullResolutionBitmap == null) return;
+        if (_currentBitmap == null) return;
 
-        _rotationAngle += degrees;
-        NormalizeRotationAngle();
+        _imageRotation += degrees;
 
-        _currentBitmap = RotateBitmap(_currentBitmap, (int)degrees);
-        _fullResolutionBitmap = RotateBitmap(_fullResolutionBitmap, (int)degrees);
+        // Normalize to -180 to 180
+        while (_imageRotation > 180) _imageRotation -= 360;
+        while (_imageRotation < -180) _imageRotation += 360;
 
-        if (_mainImage != null && _currentBitmap != null)
-        {
-            _mainImage.Source = _currentBitmap;
-        }
-
-        UpdateCropSize();
-        ApplyCropTransform();
+        ApplyImageTransform();
         CropChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -164,7 +171,7 @@ public partial class CropArea : UserControl
     {
         if (_currentBitmap != null)
         {
-            UpdateCropSize();
+            ResetImageTransform();
             CropChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -179,10 +186,17 @@ public partial class CropArea : UserControl
         _fullResolutionBitmap?.Dispose();
         _fullResolutionBitmap = null;
         CurrentOriginalImagePath = null;
+        _imageOffset = default;
+        _imageScale = 1.0;
+        _imageRotation = 0;
+        _activePointers.Clear();
+        _isDragging = false;
+        _isMultiTouchGesture = false;
 
         if (_mainImage != null) _mainImage.IsVisible = false;
         if (_backgroundPattern != null) _backgroundPattern.IsVisible = true;
         if (_cropOverlay != null) _cropOverlay.IsVisible = false;
+        if (_interactionLayer != null) _interactionLayer.IsVisible = false;
     }
 
     /// <summary>
@@ -206,20 +220,67 @@ public partial class CropArea : UserControl
     /// </summary>
     public CropSettings? GetCropSettings()
     {
-        if (!IsCropStateValid()) return null;
+        if (_currentBitmap == null || _cropOverlay == null) return null;
+
+        var containerBounds = _cropOverlay.Bounds;
+        var cropRect = GetCropRectInImageCoordinates();
 
         return new CropSettings
         {
-            X = _cropArea.X,
-            Y = _cropArea.Y,
-            Width = _cropArea.Width,
-            Height = _cropArea.Height,
-            RotationAngle = _rotationAngle,
-            ImageDisplayWidth = _imageDisplaySize.Width,
-            ImageDisplayHeight = _imageDisplaySize.Height,
-            ImageDisplayOffsetX = _imageDisplayOffset.X,
-            ImageDisplayOffsetY = _imageDisplayOffset.Y
+            X = cropRect.X,
+            Y = cropRect.Y,
+            Width = cropRect.Width,
+            Height = cropRect.Height,
+            RotationAngle = _imageRotation,
+            ImageDisplayWidth = containerBounds.Width,
+            ImageDisplayHeight = containerBounds.Height,
+            ImageDisplayOffsetX = _imageOffset.X,
+            ImageDisplayOffsetY = _imageOffset.Y,
+            Scale = _imageScale
         };
+    }
+
+    /// <summary>
+    /// Gets the current rotation angle in degrees (-180 to 180).
+    /// </summary>
+    public double CurrentRotation => _imageRotation;
+
+    /// <summary>
+    /// Gets the current zoom/scale level.
+    /// </summary>
+    public double CurrentScale => _imageScale;
+
+    /// <summary>
+    /// Sets the rotation angle in degrees. The image rotates around its center.
+    /// </summary>
+    /// <param name="degrees">Rotation angle in degrees</param>
+    public void SetRotation(double degrees)
+    {
+        if (_currentBitmap == null) return;
+
+        _imageRotation = degrees;
+
+        // Normalize to -180 to 180
+        while (_imageRotation > 180) _imageRotation -= 360;
+        while (_imageRotation < -180) _imageRotation += 360;
+
+        ApplyImageTransform();
+        CropChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Sets the zoom/scale level.
+    /// </summary>
+    /// <param name="scale">Scale value (1.0 = 100%)</param>
+    public void SetScale(double scale)
+    {
+        if (_currentBitmap == null) return;
+
+        // Very permissive limits
+        _imageScale = Math.Clamp(scale, 0.1, 10.0);
+
+        ApplyImageTransform();
+        CropChanged?.Invoke(this, EventArgs.Empty);
     }
 
     #endregion
@@ -231,25 +292,34 @@ public partial class CropArea : UserControl
         _currentBitmap?.Dispose();
         _currentBitmap = bitmap;
 
-        if (_mainImage == null || _backgroundPattern == null || _cropOverlay == null) return;
+        if (_mainImage == null || _backgroundPattern == null || _cropOverlay == null || _interactionLayer == null) return;
 
         _mainImage.Source = _currentBitmap;
         _mainImage.IsVisible = true;
         _backgroundPattern.IsVisible = false;
         _cropOverlay.IsVisible = true;
+        _interactionLayer.IsVisible = true;
 
-        await Task.Delay(100);
+        await Task.Delay(50);
 
-        if (settings != null && TryRestoreSettings(settings))
+        UpdateCropCircle();
+        RestoreOrResetTransform(settings);
+        CropChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RestoreOrResetTransform(CropSettings? settings)
+    {
+        if (settings != null && _currentBitmap != null)
         {
-            ApplyCropTransform();
+            _imageRotation = settings.RotationAngle;
+            _imageScale = settings.Scale > 0 ? settings.Scale : 1.0;
+            _imageOffset = new Point(settings.ImageDisplayOffsetX, settings.ImageDisplayOffsetY);
+            ApplyImageTransform();
         }
         else
         {
-            UpdateCropSize();
+            ResetImageTransform();
         }
-
-        CropChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private Bitmap ResizeImageIfNeeded(Bitmap original)
@@ -269,126 +339,47 @@ public partial class CropArea : UserControl
 
     private static Bitmap LoadBitmapWithExifOrientation(Stream stream, string? filePath)
     {
-        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
-        {
-            try
-            {
-                var directories = ImageMetadataReader.ReadMetadata(filePath);
-                var exifDir = directories.OfType<ExifIfd0Directory>().FirstOrDefault();
-                // Note: EXIF orientation handling could be expanded here
-            }
-            catch { }
-        }
-
+        // Note: Avalonia's Bitmap loader handles EXIF orientation automatically
         return new Bitmap(stream);
     }
 
     #endregion
 
-    #region Crop Area Management
+    #region Crop Circle Management
 
-    private void UpdateCropSize()
+    private void UpdateCropCircle()
     {
-        if (_currentBitmap == null || _cropOverlay == null) return;
+        if (_cropOverlay == null || _cropCircle == null) return;
 
-        var bounds = _cropOverlay.Bounds;
-        if (bounds.Width == 0 || bounds.Height == 0)
-        {
-            SetDefaultCropValues();
-            return;
-        }
+        var containerBounds = _cropOverlay.Bounds;
+        if (containerBounds.Width == 0 || containerBounds.Height == 0) return;
 
-        CalculateDisplayMetrics(bounds);
-        InitializeCrop();
-        UpdateCropShape();
-    }
+        // Crop circle size: 70% of the smaller dimension
+        _cropCircleSize = Math.Min(containerBounds.Width, containerBounds.Height) * 0.7;
+        _cropCircleSize = Math.Clamp(_cropCircleSize, _options.MinimumCropSize, _options.MaximumCropSize);
 
-    private void SetDefaultCropValues()
-    {
-        _cropArea = new Rect(100, 50, 200, 200);
-        _imageDisplaySize = new Size(400, 300);
-        _imageDisplayOffset = new Point(100, 50);
-    }
+        // Update crop circle border
+        _cropCircle.Width = _cropCircleSize;
+        _cropCircle.Height = _cropCircleSize;
+        _cropCircle.CornerRadius = new CornerRadius(_cropCircleSize / 2);
 
-    private void CalculateDisplayMetrics(Rect containerBounds)
-    {
-        var imageAspectRatio = (double)_currentBitmap!.PixelSize.Width / _currentBitmap.PixelSize.Height;
-        var containerAspectRatio = containerBounds.Width / containerBounds.Height;
-
-        if (imageAspectRatio > containerAspectRatio)
-        {
-            _imageDisplaySize = new Size(containerBounds.Width, containerBounds.Width / imageAspectRatio);
-            var marginY = (containerBounds.Height - _imageDisplaySize.Height) / 2;
-            _imageDisplayOffset = new Point(0, Math.Max(0, marginY));
-        }
-        else
-        {
-            _imageDisplaySize = new Size(containerBounds.Height * imageAspectRatio, containerBounds.Height);
-            var marginX = (containerBounds.Width - _imageDisplaySize.Width) / 2;
-            _imageDisplayOffset = new Point(Math.Max(0, marginX), 0);
-        }
-    }
-
-    private void InitializeCrop()
-    {
-        if (_cropSelection == null) return;
-
-        var maxSize = CalculateMaximumCropSize();
-        var size = Math.Clamp(
-            Math.Min(_imageDisplaySize.Width, _imageDisplaySize.Height) * 0.5,
-            _options.MinimumCropSize,
-            maxSize
-        );
-
-        _cropSelection.Width = size;
-        _cropSelection.Height = size;
-        _cropArea = new Rect(
-            _imageDisplayOffset.X + (_imageDisplaySize.Width - size) / 2,
-            _imageDisplayOffset.Y + (_imageDisplaySize.Height - size) / 2,
-            size, size
-        );
-        _rotationAngle = 0;
-        ApplyCropTransform();
-    }
-
-    private void UpdateCropShape()
-    {
-        if (_cropSelection == null) return;
-
-        var radius = _options.CropShape == CropShape.Circle
-            ? _cropArea.Width / 2
-            : 0;
-        _cropSelection.CornerRadius = new CornerRadius(radius);
-    }
-
-    private void ApplyCropTransform()
-    {
-        if (_selectionGroup == null || _cropSelection == null) return;
-
-        var snapped = SnapToPixels(_cropArea);
-        _selectionGroup.Width = snapped.Width;
-        _selectionGroup.Height = snapped.Height;
-        _selectionGroup.Margin = new Thickness(snapped.X, snapped.Y, 0, 0);
-        _cropSelection.Width = snapped.Width;
-        _cropSelection.Height = snapped.Height;
-
-        UpdateCropShape();
-        UpdateRotation();
         UpdateCutout();
     }
 
     private void UpdateCutout()
     {
-        if (_cropOverlay == null || _overlayCutout == null || _cropOverlay.Bounds.Width == 0) return;
+        if (_cropOverlay == null || _overlayCutout == null) return;
 
-        var outerRect = SnapToPixels(new Rect(0, 0, _cropOverlay.Bounds.Width, _cropOverlay.Bounds.Height));
-        var innerRect = SnapToPixels(_cropArea);
-        var center = innerRect.Center;
-        var radius = innerRect.Width / 2;
+        var containerBounds = _cropOverlay.Bounds;
+        if (containerBounds.Width == 0 || containerBounds.Height == 0) return;
+
+        var outerRect = new Rect(0, 0, containerBounds.Width, containerBounds.Height);
+        var center = new Point(containerBounds.Width / 2, containerBounds.Height / 2);
+        var radius = _cropCircleSize / 2;
 
         Geometry innerGeometry = _options.CropShape == CropShape.Circle
             ? new EllipseGeometry { Center = center, RadiusX = radius, RadiusY = radius }
-            : new RectangleGeometry(innerRect);
+            : new RectangleGeometry(new Rect(center.X - radius, center.Y - radius, _cropCircleSize, _cropCircleSize));
 
         _overlayCutout.Data = new GeometryGroup
         {
@@ -397,77 +388,91 @@ public partial class CropArea : UserControl
         };
     }
 
-    private void UpdateRotation()
+    private void ResetImageTransform()
     {
-        if (_selectionGroup == null) return;
-        _selectionGroup.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-        _selectionGroup.RenderTransform = new RotateTransform(_rotationAngle);
-        PositionHandles();
+        if (_currentBitmap == null || _cropOverlay == null || _mainImage == null) return;
+
+        var containerBounds = _cropOverlay.Bounds;
+        if (containerBounds.Width == 0 || containerBounds.Height == 0) return;
+
+        // Calculate scale to fit image so crop circle is filled
+        var imageWidth = _currentBitmap.PixelSize.Width;
+        var imageHeight = _currentBitmap.PixelSize.Height;
+
+        // Scale so the smaller image dimension matches the crop circle
+        var scaleToFillCrop = _cropCircleSize / Math.Min(imageWidth, imageHeight);
+        _imageScale = scaleToFillCrop;
+
+        // Reset rotation and offset
+        _imageRotation = 0;
+        _imageOffset = new Point(0, 0);
+
+        ApplyImageTransform();
     }
 
-    private void PositionHandles()
+    private void ApplyImageTransform()
     {
-        if (_selectionGroup == null) return;
+        if (_mainImage == null || _currentBitmap == null || _cropOverlay == null) return;
 
-        var width = _selectionGroup.Width;
-        var center = width / 2;
-        var radius = width / 2;
-        var angles = new[] { 45.0, 135.0, 225.0, 315.0 };
-        var handles = new[] { _handleTL, _handleTR, _handleBL, _handleBR };
+        // Image dimensions
+        var imageWidth = _currentBitmap.PixelSize.Width;
+        var imageHeight = _currentBitmap.PixelSize.Height;
+        var imageCenterX = imageWidth / 2.0;
+        var imageCenterY = imageHeight / 2.0;
 
-        for (int i = 0; i < 4; i++)
-        {
-            var handle = handles[i];
-            if (handle == null) continue;
+        // Container dimensions - where the crop circle is centered
+        var containerBounds = _cropOverlay.Bounds;
+        var containerCenterX = containerBounds.Width / 2.0;
+        var containerCenterY = containerBounds.Height / 2.0;
 
-            var angleRad = angles[i] * Math.PI / 180;
-            var x = center + radius * Math.Cos(angleRad) - 7;
-            var y = center + radius * Math.Sin(angleRad) - 7;
-            Canvas.SetLeft(handle, x);
-            Canvas.SetTop(handle, y);
-        }
+        var rotRad = _imageRotation * Math.PI / 180;
+
+        // Build transform to:
+        // 1. Move image center to origin
+        // 2. Scale
+        // 3. Apply pan offset
+        // 4. Rotate
+        // 5. Move to container center (where crop circle is)
+        var matrix =
+            Matrix.CreateTranslation(-imageCenterX, -imageCenterY) *
+            Matrix.CreateScale(_imageScale, _imageScale) *
+            Matrix.CreateTranslation(_imageOffset.X, _imageOffset.Y) *
+            Matrix.CreateRotation(rotRad) *
+            Matrix.CreateTranslation(containerCenterX, containerCenterY);
+
+        _mainImage.RenderTransform = new MatrixTransform(matrix);
     }
 
-    private double CalculateMaximumCropSize()
+    private Rect GetCropRectInImageCoordinates()
     {
-        if (_imageDisplaySize.Width <= 0 || _imageDisplaySize.Height <= 0)
-            return _options.MaximumCropSize;
+        if (_currentBitmap == null || _cropOverlay == null) return default;
 
-        var maxFromImage = Math.Min(_imageDisplaySize.Width, _imageDisplaySize.Height) * _options.MaximumCropRatio;
-        return Math.Min(_options.MaximumCropSize, maxFromImage);
-    }
+        var containerBounds = _cropOverlay.Bounds;
+        var containerCenterX = containerBounds.Width / 2;
+        var containerCenterY = containerBounds.Height / 2;
 
-    private bool TryRestoreSettings(CropSettings settings)
-    {
-        if (_currentBitmap == null || _cropOverlay == null) return false;
+        var imageWidth = _currentBitmap.PixelSize.Width;
+        var imageHeight = _currentBitmap.PixelSize.Height;
 
-        try
-        {
-            var bounds = _cropOverlay.Bounds;
-            if (bounds.Width <= 0 || bounds.Height <= 0) return false;
+        // The crop center relative to image center (accounting for offset)
+        // Offset moves the image, so to find where crop is relative to image, we invert
+        var cropRelativeX = -_imageOffset.X;
+        var cropRelativeY = -_imageOffset.Y;
 
-            CalculateDisplayMetrics(bounds);
+        // Apply inverse rotation to get position in unrotated image space
+        var rotationRad = -_imageRotation * Math.PI / 180;
+        var cos = Math.Cos(rotationRad);
+        var sin = Math.Sin(rotationRad);
 
-            var scaleX = settings.ImageDisplayWidth > 0 ? _imageDisplaySize.Width / settings.ImageDisplayWidth : 1;
-            var scaleY = settings.ImageDisplayHeight > 0 ? _imageDisplaySize.Height / settings.ImageDisplayHeight : 1;
+        var unrotatedX = cropRelativeX * cos - cropRelativeY * sin;
+        var unrotatedY = cropRelativeX * sin + cropRelativeY * cos;
 
-            var relativeX = settings.X - settings.ImageDisplayOffsetX;
-            var relativeY = settings.Y - settings.ImageDisplayOffsetY;
+        // Convert from scaled coordinates to original image coordinates
+        var cropInImageX = (imageWidth / 2) + (unrotatedX / _imageScale) - (_cropCircleSize / _imageScale / 2);
+        var cropInImageY = (imageHeight / 2) + (unrotatedY / _imageScale) - (_cropCircleSize / _imageScale / 2);
+        var cropInImageSize = _cropCircleSize / _imageScale;
 
-            var newX = _imageDisplayOffset.X + relativeX * scaleX;
-            var newY = _imageDisplayOffset.Y + relativeY * scaleY;
-            var newWidth = Math.Max(1, Math.Min(settings.Width * scaleX, _imageDisplaySize.Width));
-            var newHeight = Math.Max(1, Math.Min(settings.Height * scaleY, _imageDisplaySize.Height));
-
-            _cropArea = new Rect(newX, newY, newWidth, newHeight);
-            _rotationAngle = settings.RotationAngle;
-
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        return new Rect(cropInImageX, cropInImageY, cropInImageSize, cropInImageSize);
     }
 
     #endregion
@@ -476,304 +481,359 @@ public partial class CropArea : UserControl
 
     private void InitializeEventHandlers()
     {
-        if (_cropSelection == null || _selectionGroup == null || _cropOverlay == null) return;
+        if (_interactionLayer == null || _cropOverlay == null) return;
 
-        _cropSelection.PointerPressed += OnCropSelectionPressed;
-        _cropSelection.PointerMoved += OnCropSelectionMoved;
-        _cropSelection.PointerReleased += OnCropSelectionReleased;
+        _interactionLayer.PointerPressed += OnInteractionPressed;
+        _interactionLayer.PointerMoved += OnInteractionMoved;
+        _interactionLayer.PointerReleased += OnInteractionReleased;
+        _interactionLayer.PointerCaptureLost += OnPointerCaptureLost;
+        _interactionLayer.PointerWheelChanged += OnPointerWheelChanged;
+        _interactionLayer.PointerExited += OnPointerExited;
 
-        _selectionGroup.PointerPressed += OnSelectionGroupPressed;
-        _selectionGroup.PointerMoved += OnSelectionGroupMoved;
-        _selectionGroup.PointerReleased += OnSelectionGroupReleased;
-
-        _cropOverlay.PointerPressed += OnOverlayPressed;
-        _cropOverlay.PointerMoved += OnOverlayMoved;
-        _cropOverlay.PointerReleased += OnOverlayReleased;
         _cropOverlay.SizeChanged += (s, e) =>
         {
-            if (_currentBitmap != null) UpdateCropSize();
+            UpdateCropCircle();
+            if (_currentBitmap != null)
+            {
+                ResetImageTransform();
+            }
         };
-
-        AttachHandleEvents();
     }
 
-    private void AttachHandleEvents()
+    private void OnPointerExited(object? sender, PointerEventArgs e)
     {
-        var handles = new[] { (_handleTL, "tl"), (_handleTR, "tr"), (_handleBL, "bl"), (_handleBR, "br") };
-
-        foreach (var (handle, position) in handles)
+        if (!_isRotating && !_isDragging)
         {
-            if (handle == null || _cropOverlay == null) continue;
+            SetBorderHover(false);
+        }
+    }
 
-            handle.PointerPressed += (s, e) =>
+    private bool IsNearBorder(Point position)
+    {
+        if (_cropOverlay == null) return false;
+
+        var containerBounds = _cropOverlay.Bounds;
+        var center = new Point(containerBounds.Width / 2, containerBounds.Height / 2);
+        var radius = _cropCircleSize / 2;
+
+        // Distance from center
+        var dx = position.X - center.X;
+        var dy = position.Y - center.Y;
+        var distance = Math.Sqrt(dx * dx + dy * dy);
+
+        // Near border if within 20 pixels of the circle edge
+        var borderThickness = 20;
+        return Math.Abs(distance - radius) < borderThickness;
+    }
+
+    private void SetBorderHover(bool isHovering)
+    {
+        if (_isHoveringBorder == isHovering) return;
+        _isHoveringBorder = isHovering;
+
+        if (_cropCircle != null)
+        {
+            if (isHovering)
             {
-                if (IsLeftButtonPressed(e, _cropOverlay!))
+                _cropCircle.BorderBrush = new SolidColorBrush(Color.FromRgb(100, 200, 255));
+                _cropCircle.BorderThickness = new Thickness(3);
+                _cropCircle.BoxShadow = new BoxShadows(new BoxShadow
                 {
-                    _isResizing = true;
-                    _activeHandle = position;
-                    _pointerStartPosition = e.GetPosition(_cropOverlay);
-                    _rotationStartAngle = CalculateAngle(_cropArea.Center, _pointerStartPosition);
-                    _rotationInitialAngle = _rotationAngle;
-                    e.Pointer.Capture(_cropOverlay);
-                    e.Handled = true;
-                }
-            };
-
-            handle.PointerReleased += (s, e) =>
-            {
-                EndDragAndResize();
-                e.Pointer.Capture(null);
-                e.Handled = true;
-            };
-        }
-    }
-
-    private void OnCropSelectionPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (_cropSelection == null || _cropOverlay == null) return;
-        if (!IsLeftButtonPressed(e, _cropSelection)) return;
-
-        var position = e.GetPosition(_cropSelection);
-        var center = new Point(_cropSelection.Width / 2, _cropSelection.Height / 2);
-        var (distance, deltaX, deltaY) = CalculateDistanceAndDeltas(position, center);
-        var radius = _cropSelection.Width / 2;
-
-        if (IsOnResizeEdge(distance, radius))
-        {
-            StartResize(e, deltaX, deltaY);
-        }
-    }
-
-    private void OnCropSelectionMoved(object? sender, PointerEventArgs e)
-    {
-        if (_cropSelection == null || _cropOverlay == null) return;
-
-        if (!_isResizing)
-        {
-            UpdateCursor(e.GetPosition(_cropSelection), _cropSelection);
-            return;
-        }
-
-        if (!ContinueDragOperation(e, _cropOverlay))
-        {
-            EndResize();
-            return;
-        }
-
-        PerformResize(e.GetPosition(_cropOverlay));
-        ApplyCropTransform();
-        NotifyCropChanged();
-        e.Handled = true;
-    }
-
-    private void OnCropSelectionReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        EndResize();
-        if (_cropSelection != null) _cropSelection.Cursor = new Cursor(StandardCursorType.SizeAll);
-        e.Pointer.Capture(null);
-        e.Handled = true;
-    }
-
-    private void OnSelectionGroupPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (_cropSelection == null || _cropOverlay == null) return;
-        if (!IsLeftButtonPressed(e, _cropSelection)) return;
-        StartDrag(e);
-    }
-
-    private void OnSelectionGroupMoved(object? sender, PointerEventArgs e)
-    {
-        if (_selectionGroup == null || _cropOverlay == null) return;
-
-        if (!_isDragging)
-        {
-            _selectionGroup.Cursor = new Cursor(StandardCursorType.SizeAll);
-            return;
-        }
-
-        if (!ContinueDragOperation(e, _cropOverlay))
-        {
-            EndDrag();
-            return;
-        }
-
-        PerformDrag(e.GetPosition(_cropOverlay));
-        NotifyCropChanged();
-        e.Handled = true;
-    }
-
-    private void OnSelectionGroupReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        EndDragAndResize();
-        e.Pointer.Capture(null);
-        e.Handled = true;
-    }
-
-    private void OnOverlayPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (_cropOverlay == null) return;
-        if (!IsLeftButtonPressed(e, _cropOverlay)) return;
-
-        var position = e.GetPosition(_cropOverlay);
-        var center = new Point(_cropArea.X + _cropArea.Width / 2, _cropArea.Y + _cropArea.Height / 2);
-        var (distance, deltaX, deltaY) = CalculateDistanceAndDeltas(position, center);
-
-        if (IsOnResizeEdge(distance, _cropArea.Width / 2))
-        {
-            StartResize(e, deltaX, deltaY);
-        }
-        else if (distance > _cropArea.Width / 2 + 10)
-        {
-            // Click outside the crop area - allow selecting a new image
-            ImageAreaClicked?.Invoke(this, EventArgs.Empty);
-        }
-    }
-
-    private void OnOverlayMoved(object? sender, PointerEventArgs e)
-    {
-        if (_cropOverlay == null) return;
-
-        if (_isResizing && !string.IsNullOrEmpty(_activeHandle))
-        {
-            if (!ContinueDragOperation(e, _cropOverlay))
-            {
-                EndDragAndResize();
-                return;
+                    Color = Color.FromArgb(150, 100, 200, 255),
+                    Blur = 10,
+                    Spread = 2
+                });
             }
-            PerformRotation(e.GetPosition(_cropOverlay));
-            NotifyCropChanged();
-            e.Handled = true;
-        }
-        else if (_isResizing)
-        {
-            if (!ContinueDragOperation(e, _cropOverlay))
+            else
             {
-                EndResize();
-                return;
+                _cropCircle.BorderBrush = new SolidColorBrush(Colors.White);
+                _cropCircle.BorderThickness = new Thickness(2);
+                _cropCircle.BoxShadow = new BoxShadows(new BoxShadow
+                {
+                    Color = Color.FromArgb(64, 0, 0, 0),
+                    Blur = 0,
+                    Spread = 1
+                });
             }
-            PerformResize(e.GetPosition(_cropOverlay));
-            ApplyCropTransform();
-            NotifyCropChanged();
+        }
+
+        if (_interactionLayer != null && !_isDragging && !_isRotating)
+        {
+            _interactionLayer.Cursor = isHovering
+                ? new Cursor(StandardCursorType.Cross)
+                : new Cursor(StandardCursorType.Hand);
+        }
+    }
+
+    private void OnInteractionPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_interactionLayer == null || _currentBitmap == null) return;
+
+        var point = e.GetCurrentPoint(_interactionLayer);
+        var position = e.GetPosition(_interactionLayer);
+        var pointerId = (int)e.Pointer.Id;
+
+        e.Pointer.Capture(_interactionLayer);
+
+        // Left-click on border = rotate, elsewhere = pan
+        if (point.Properties.IsLeftButtonPressed)
+        {
+            _activePointers[pointerId] = position;
+
+            // Check if clicking on/near the border
+            if (IsNearBorder(position) && _activePointers.Count == 1)
+            {
+                // Start rotation
+                _isRotating = true;
+                _isDragging = false;
+                _isMultiTouchGesture = false;
+
+                var containerBounds = _cropOverlay?.Bounds ?? default;
+                var center = new Point(containerBounds.Width / 2, containerBounds.Height / 2);
+                _rotateStartAngle = Math.Atan2(position.Y - center.Y, position.X - center.X) * 180 / Math.PI;
+                _rotateStartRotation = _imageRotation;
+                _interactionLayer.Cursor = new Cursor(StandardCursorType.Cross);
+            }
+            else if (_activePointers.Count == 1)
+            {
+                // Start pan
+                _isDragging = true;
+                _isMultiTouchGesture = false;
+                _isRotating = false;
+                _pointerStartPosition = position;
+                _dragStartOffset = _imageOffset;
+                _interactionLayer.Cursor = new Cursor(StandardCursorType.SizeAll);
+            }
+            else if (_activePointers.Count == 2)
+            {
+                // Two fingers - start pinch/rotate gesture
+                _isDragging = false;
+                _isMultiTouchGesture = true;
+                _isRotating = false;
+                InitializeMultiTouchGesture();
+            }
+
             e.Handled = true;
         }
     }
 
-    private void OnOverlayReleased(object? sender, PointerReleasedEventArgs e)
+    private void OnInteractionMoved(object? sender, PointerEventArgs e)
     {
-        EndDragAndResize();
+        if (_interactionLayer == null) return;
+
+        var position = e.GetPosition(_interactionLayer);
+        var pointerId = (int)e.Pointer.Id;
+
+        // Update hover state when not actively dragging/rotating
+        if (!_isDragging && !_isRotating && !_isMultiTouchGesture)
+        {
+            SetBorderHover(IsNearBorder(position));
+        }
+
+        if (_currentBitmap == null) return;
+
+        // Handle border rotation
+        if (_isRotating)
+        {
+            var containerBounds = _cropOverlay?.Bounds ?? default;
+            var center = new Point(containerBounds.Width / 2, containerBounds.Height / 2);
+            var currentAngle = Math.Atan2(position.Y - center.Y, position.X - center.X) * 180 / Math.PI;
+            var angleDelta = currentAngle - _rotateStartAngle;
+
+            _imageRotation = _rotateStartRotation + angleDelta;
+
+            // Normalize rotation
+            while (_imageRotation > 180) _imageRotation -= 360;
+            while (_imageRotation < -180) _imageRotation += 360;
+
+            ApplyImageTransform();
+            NotifyCropChanged();
+            e.Handled = true;
+            return;
+        }
+
+        if (!_activePointers.ContainsKey(pointerId)) return;
+        _activePointers[pointerId] = position;
+
+        if (_isMultiTouchGesture && _activePointers.Count >= 2)
+        {
+            // Handle pinch-to-zoom and rotation
+            HandleMultiTouchGesture();
+        }
+        else if (_isDragging && _activePointers.Count == 1)
+        {
+            // Handle pan - FREE movement, no constraints
+            var delta = position - _pointerStartPosition;
+
+            _imageOffset = new Point(
+                _dragStartOffset.X + delta.X,
+                _dragStartOffset.Y + delta.Y
+            );
+
+            ApplyImageTransform();
+            NotifyCropChanged();
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnInteractionReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var pointerId = (int)e.Pointer.Id;
+        var position = e.GetPosition(_interactionLayer);
+        _activePointers.Remove(pointerId);
         e.Pointer.Capture(null);
+
+        // End rotation
+        if (_isRotating)
+        {
+            _isRotating = false;
+            SetBorderHover(IsNearBorder(position));
+            CropChanged?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
+
+        if (_activePointers.Count == 0)
+        {
+            // All fingers lifted
+            _isDragging = false;
+            _isMultiTouchGesture = false;
+            SetBorderHover(IsNearBorder(position));
+            CropChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else if (_activePointers.Count == 1 && _isMultiTouchGesture)
+        {
+            // Went from 2 fingers to 1 - switch to pan mode
+            _isMultiTouchGesture = false;
+            _isDragging = true;
+            var remainingPointer = _activePointers.First();
+            _pointerStartPosition = remainingPointer.Value;
+            _dragStartOffset = _imageOffset;
+        }
+
         e.Handled = true;
     }
 
-    #endregion
-
-    #region Interaction Helpers
-
-    private void StartResize(PointerPressedEventArgs e, double deltaX, double deltaY)
+    private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
-        if (_cropOverlay == null || _cropSelection == null) return;
-        _isResizing = true;
-        _pointerStartPosition = e.GetPosition(_cropOverlay);
-        _dragStartCropArea = _cropArea;
-        _cropSelection.Cursor = new Cursor(GetResizeCursor(deltaX, deltaY));
-        e.Pointer.Capture(_cropSelection);
+        var pointerId = (int)e.Pointer.Id;
+        _activePointers.Remove(pointerId);
+
+        if (_activePointers.Count == 0)
+        {
+            _isDragging = false;
+            _isMultiTouchGesture = false;
+        }
+    }
+
+    private void InitializeMultiTouchGesture()
+    {
+        if (_activePointers.Count < 2) return;
+
+        var points = _activePointers.Values.ToList();
+        var p1 = points[0];
+        var p2 = points[1];
+
+        _gestureStartDistance = GetDistance(p1, p2);
+        _gestureStartAngle = GetAngle(p1, p2);
+        _gestureStartScale = _imageScale;
+        _gestureStartRotation = _imageRotation;
+        _gestureStartOffset = _imageOffset;
+    }
+
+    private void HandleMultiTouchGesture()
+    {
+        if (_activePointers.Count < 2 || _currentBitmap == null) return;
+
+        var points = _activePointers.Values.ToList();
+        var p1 = points[0];
+        var p2 = points[1];
+
+        var currentDistance = GetDistance(p1, p2);
+        var currentAngle = GetAngle(p1, p2);
+
+        // Calculate scale change (pinch-to-zoom) - with generous limits
+        if (_gestureStartDistance > 0)
+        {
+            var scaleRatio = currentDistance / _gestureStartDistance;
+            var newScale = _gestureStartScale * scaleRatio;
+
+            // Very permissive limits: 0.1x to 10x
+            var minScale = 0.1;
+            var maxScale = 10.0;
+
+            _imageScale = Math.Clamp(newScale, minScale, maxScale);
+        }
+
+        // Calculate rotation change (two-finger rotation)
+        var angleDelta = currentAngle - _gestureStartAngle;
+        _imageRotation = _gestureStartRotation + angleDelta;
+
+        // Normalize rotation to -180 to 180
+        while (_imageRotation > 180) _imageRotation -= 360;
+        while (_imageRotation < -180) _imageRotation += 360;
+
+        ApplyImageTransform();
+        NotifyCropChanged();
+    }
+
+    private static double GetDistance(Point p1, Point p2)
+    {
+        var dx = p2.X - p1.X;
+        var dy = p2.Y - p1.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    private static double GetAngle(Point p1, Point p2)
+    {
+        return Math.Atan2(p2.Y - p1.Y, p2.X - p1.X) * 180 / Math.PI;
+    }
+
+    private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (_currentBitmap == null || _cropOverlay == null) return;
+
+        var position = e.GetPosition(_interactionLayer);
+        var containerBounds = _cropOverlay.Bounds;
+        var containerCenterX = containerBounds.Width / 2;
+        var containerCenterY = containerBounds.Height / 2;
+
+        // Mouse position relative to container center
+        var mouseFromCenterX = position.X - containerCenterX;
+        var mouseFromCenterY = position.Y - containerCenterY;
+
+        // Apply inverse rotation to get mouse position in pre-rotation space
+        // (offset is applied BEFORE rotation in the transform)
+        var rotRad = _imageRotation * Math.PI / 180;
+        var cos = Math.Cos(-rotRad);
+        var sin = Math.Sin(-rotRad);
+
+        var mouseInOffsetSpaceX = mouseFromCenterX * cos - mouseFromCenterY * sin;
+        var mouseInOffsetSpaceY = mouseFromCenterX * sin + mouseFromCenterY * cos;
+
+        // Zoom
+        var scaleFactor = e.Delta.Y > 0 ? 1.15 : 0.87;
+        var oldScale = _imageScale;
+        var newScale = Math.Clamp(_imageScale * scaleFactor, 0.1, 10.0);
+
+        if (Math.Abs(newScale - oldScale) > 0.001)
+        {
+            var scaleRatio = newScale / oldScale;
+            _imageScale = newScale;
+
+            // Adjust offset so the point under the mouse stays under the mouse
+            // Formula: newOffset = mousePos * (1 - scaleRatio) + oldOffset * scaleRatio
+            _imageOffset = new Point(
+                mouseInOffsetSpaceX * (1 - scaleRatio) + _imageOffset.X * scaleRatio,
+                mouseInOffsetSpaceY * (1 - scaleRatio) + _imageOffset.Y * scaleRatio
+            );
+
+            ApplyImageTransform();
+            CropChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         e.Handled = true;
-    }
-
-    private void StartDrag(PointerPressedEventArgs e)
-    {
-        if (_cropOverlay == null || _cropSelection == null) return;
-        _isDragging = true;
-        _pointerStartPosition = e.GetPosition(_cropOverlay);
-        _dragStartCropArea = _cropArea;
-        _cropSelection.Cursor = new Cursor(StandardCursorType.SizeAll);
-        e.Pointer.Capture(_cropSelection);
-        e.Handled = true;
-    }
-
-    private void EndResize() => _isResizing = false;
-    private void EndDrag() => _isDragging = false;
-
-    private void EndDragAndResize()
-    {
-        _isDragging = false;
-        _isResizing = false;
-        _activeHandle = null;
-        CropChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    private void PerformDrag(Point currentPosition)
-    {
-        if (!IsCropStateValid()) return;
-
-        var delta = currentPosition - _pointerStartPosition;
-        var newX = Math.Clamp(
-            _dragStartCropArea.X + delta.X,
-            _imageDisplayOffset.X,
-            _imageDisplayOffset.X + _imageDisplaySize.Width - _dragStartCropArea.Width
-        );
-        var newY = Math.Clamp(
-            _dragStartCropArea.Y + delta.Y,
-            _imageDisplayOffset.Y,
-            _imageDisplayOffset.Y + _imageDisplaySize.Height - _dragStartCropArea.Height
-        );
-
-        _cropArea = new Rect(newX, newY, _dragStartCropArea.Width, _dragStartCropArea.Height);
-        ApplyCropTransform();
-    }
-
-    private void PerformResize(Point currentPosition)
-    {
-        if (!IsCropStateValid()) return;
-
-        var centerX = _dragStartCropArea.X + _dragStartCropArea.Width / 2;
-        var centerY = _dragStartCropArea.Y + _dragStartCropArea.Height / 2;
-
-        var startLength = Math.Max(1, Math.Sqrt(
-            Math.Pow(_pointerStartPosition.X - centerX, 2) +
-            Math.Pow(_pointerStartPosition.Y - centerY, 2)));
-
-        var currentLength = Math.Sqrt(
-            Math.Pow(currentPosition.X - centerX, 2) +
-            Math.Pow(currentPosition.Y - centerY, 2));
-
-        var halfNewSize = Math.Clamp(
-            _dragStartCropArea.Width / 2 * (currentLength / startLength),
-            _options.MinimumCropSize / 2,
-            CalculateMaximumCropSize() / 2
-        );
-
-        halfNewSize = Math.Min(halfNewSize, Math.Min(
-            centerX - _imageDisplayOffset.X,
-            _imageDisplayOffset.X + _imageDisplaySize.Width - centerX));
-        halfNewSize = Math.Min(halfNewSize, Math.Min(
-            centerY - _imageDisplayOffset.Y,
-            _imageDisplayOffset.Y + _imageDisplaySize.Height - centerY));
-        halfNewSize = Math.Max(halfNewSize, _options.MinimumCropSize / 2);
-
-        _cropArea = new Rect(centerX - halfNewSize, centerY - halfNewSize, halfNewSize * 2, halfNewSize * 2);
-    }
-
-    private void PerformRotation(Point currentPosition)
-    {
-        var currentAngle = CalculateAngle(_cropArea.Center, currentPosition);
-        _rotationAngle = NormalizeAngle(_rotationInitialAngle + (currentAngle - _rotationStartAngle));
-        UpdateRotation();
-        UpdateCutout();
-    }
-
-    private void UpdateCursor(Point position, Control control)
-    {
-        var center = new Point(control.Bounds.Width / 2, control.Bounds.Height / 2);
-        var radius = control.Bounds.Width / 2;
-        var (distance, deltaX, deltaY) = CalculateDistanceAndDeltas(position, center);
-
-        if (IsOnResizeEdge(distance, radius))
-            control.Cursor = new Cursor(GetResizeCursor(deltaX, deltaY));
-        else if (distance <= radius - 20)
-            control.Cursor = new Cursor(StandardCursorType.SizeAll);
-        else
-            control.Cursor = Cursor.Default;
     }
 
     private void NotifyCropChanged()
@@ -792,17 +852,43 @@ public partial class CropArea : UserControl
 
     private Bitmap? CreateCroppedImageInternal(int outputSize)
     {
-        if (!IsCropStateValid()) return null;
+        if (_currentBitmap == null || _cropOverlay == null) return null;
 
-        var sourceBitmap = _fullResolutionBitmap ?? _currentBitmap;
-        if (sourceBitmap == null) return null;
+        if (_cropCircleSize <= 0) return null;
 
-        var scaleX = sourceBitmap.PixelSize.Width / _imageDisplaySize.Width;
-        var scaleY = sourceBitmap.PixelSize.Height / _imageDisplaySize.Height;
-        var cropX = (_cropArea.X - _imageDisplayOffset.X) * scaleX;
-        var cropY = (_cropArea.Y - _imageDisplayOffset.Y) * scaleY;
-        var cropWidth = _cropArea.Width * scaleX;
-        var cropHeight = _cropArea.Height * scaleY;
+        var bitmap = _currentBitmap;
+        var bitmapWidth = bitmap.PixelSize.Width;
+        var bitmapHeight = bitmap.PixelSize.Height;
+        var imageCenterX = bitmapWidth / 2.0;
+        var imageCenterY = bitmapHeight / 2.0;
+
+        // Container center (where crop circle is)
+        var containerBounds = _cropOverlay.Bounds;
+        var containerCenterX = containerBounds.Width / 2.0;
+        var containerCenterY = containerBounds.Height / 2.0;
+
+        var rotRad = _imageRotation * Math.PI / 180;
+
+        // Build the EXACT same transform as the display uses
+        var displayTransform =
+            Matrix.CreateTranslation(-imageCenterX, -imageCenterY) *
+            Matrix.CreateScale(_imageScale, _imageScale) *
+            Matrix.CreateTranslation(_imageOffset.X, _imageOffset.Y) *
+            Matrix.CreateRotation(rotRad) *
+            Matrix.CreateTranslation(containerCenterX, containerCenterY);
+
+        // The crop circle is at container center (containerCenterX, containerCenterY)
+        // To make the preview show the same thing:
+        // 1. Apply display transform (bitmap → screen)
+        // 2. Translate so crop circle center goes to origin
+        // 3. Scale to fit output
+        // 4. Translate to output center
+        var previewScale = (double)outputSize / _cropCircleSize;
+
+        var previewTransform = displayTransform *
+            Matrix.CreateTranslation(-containerCenterX, -containerCenterY) *
+            Matrix.CreateScale(previewScale, previewScale) *
+            Matrix.CreateTranslation(outputSize / 2.0, outputSize / 2.0);
 
         var renderTarget = new RenderTargetBitmap(new PixelSize(outputSize, outputSize));
         using var ctx = renderTarget.CreateDrawingContext();
@@ -815,140 +901,14 @@ public partial class CropArea : UserControl
 
         using (ctx.PushClip(clipRect))
         using (ctx.PushGeometryClip(clipGeometry))
+        using (ctx.PushTransform(previewTransform))
         {
-            if (Math.Abs(_rotationAngle) <= 0.01)
-            {
-                var sourceRect = new Rect(cropX, cropY, cropWidth, cropHeight);
-                var destRect = new Rect(0, 0, outputSize, outputSize);
-                ctx.DrawImage(sourceBitmap, sourceRect, destRect);
-            }
-            else
-            {
-                var centerX = cropX + cropWidth / 2.0;
-                var centerY = cropY + cropHeight / 2.0;
-                var scale = outputSize / Math.Max(cropWidth, cropHeight);
-
-                using (ctx.PushTransform(
-                    Matrix.CreateTranslation(-centerX, -centerY) *
-                    Matrix.CreateRotation(_rotationAngle * Math.PI / 180) *
-                    Matrix.CreateScale(scale, scale) *
-                    Matrix.CreateTranslation(outputSize / 2.0, outputSize / 2.0)))
-                {
-                    ctx.DrawImage(sourceBitmap,
-                        new Rect(0, 0, sourceBitmap.PixelSize.Width, sourceBitmap.PixelSize.Height),
-                        new Rect(0, 0, sourceBitmap.PixelSize.Width, sourceBitmap.PixelSize.Height));
-                }
-            }
+            ctx.DrawImage(bitmap,
+                new Rect(0, 0, bitmapWidth, bitmapHeight),
+                new Rect(0, 0, bitmapWidth, bitmapHeight));
         }
 
         return renderTarget;
-    }
-
-    private static Bitmap RotateBitmap(Bitmap source, int degrees)
-    {
-        if (degrees % 360 == 0) return source;
-
-        int normalizedDegrees = ((degrees % 360) + 360) % 360;
-        int newWidth, newHeight;
-
-        if (normalizedDegrees == 90 || normalizedDegrees == 270)
-        {
-            newWidth = source.PixelSize.Height;
-            newHeight = source.PixelSize.Width;
-        }
-        else
-        {
-            newWidth = source.PixelSize.Width;
-            newHeight = source.PixelSize.Height;
-        }
-
-        var rotated = new RenderTargetBitmap(new PixelSize(newWidth, newHeight));
-        using var context = rotated.CreateDrawingContext();
-
-        var matrix = normalizedDegrees switch
-        {
-            90 => Matrix.CreateTranslation(-source.PixelSize.Width / 2.0, -source.PixelSize.Height / 2.0) *
-                  Matrix.CreateRotation(Math.PI / 2) *
-                  Matrix.CreateTranslation(newWidth / 2.0, newHeight / 2.0),
-            180 => Matrix.CreateTranslation(-source.PixelSize.Width / 2.0, -source.PixelSize.Height / 2.0) *
-                   Matrix.CreateRotation(Math.PI) *
-                   Matrix.CreateTranslation(newWidth / 2.0, newHeight / 2.0),
-            270 => Matrix.CreateTranslation(-source.PixelSize.Width / 2.0, -source.PixelSize.Height / 2.0) *
-                   Matrix.CreateRotation(3 * Math.PI / 2) *
-                   Matrix.CreateTranslation(newWidth / 2.0, newHeight / 2.0),
-            _ => Matrix.Identity
-        };
-
-        using (context.PushTransform(matrix))
-        {
-            context.DrawImage(source,
-                new Rect(0, 0, source.PixelSize.Width, source.PixelSize.Height),
-                new Rect(0, 0, source.PixelSize.Width, source.PixelSize.Height));
-        }
-
-        source.Dispose();
-        return rotated;
-    }
-
-    #endregion
-
-    #region Utility Methods
-
-    private bool IsCropStateValid() =>
-        _currentBitmap != null &&
-        _cropArea.Width > 0 &&
-        _cropArea.Height > 0 &&
-        _imageDisplaySize.Width > 0 &&
-        _imageDisplaySize.Height > 0;
-
-    private void NormalizeRotationAngle()
-    {
-        while (_rotationAngle <= -180) _rotationAngle += 360;
-        while (_rotationAngle > 180) _rotationAngle -= 360;
-    }
-
-    private static double NormalizeAngle(double angle)
-    {
-        while (angle <= -180) angle += 360;
-        while (angle > 180) angle -= 360;
-        return angle;
-    }
-
-    private static bool IsLeftButtonPressed(PointerPressedEventArgs e, Control control) =>
-        e.GetCurrentPoint(control).Properties.IsLeftButtonPressed;
-
-    private static bool ContinueDragOperation(PointerEventArgs e, Control control) =>
-        e.GetCurrentPoint(control).Properties.IsLeftButtonPressed;
-
-    private static (double distance, double deltaX, double deltaY) CalculateDistanceAndDeltas(Point position, Point center)
-    {
-        var deltaX = position.X - center.X;
-        var deltaY = position.Y - center.Y;
-        var distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
-        return (distance, deltaX, deltaY);
-    }
-
-    private static bool IsOnResizeEdge(double distance, double radius) =>
-        distance > radius - 20 && distance < radius + 10;
-
-    private static double CalculateAngle(Point center, Point point) =>
-        Math.Atan2(point.Y - center.Y, point.X - center.X) * 180 / Math.PI;
-
-    private static Rect SnapToPixels(Rect rect)
-    {
-        var left = Math.Floor(rect.X);
-        var top = Math.Floor(rect.Y);
-        var right = Math.Ceiling(rect.Right);
-        var bottom = Math.Ceiling(rect.Bottom);
-        return new Rect(left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
-    }
-
-    private static StandardCursorType GetResizeCursor(double deltaX, double deltaY)
-    {
-        var angle = Math.Atan2(deltaY, deltaX) * 180 / Math.PI;
-        if (angle < 0) angle += 360;
-        bool isHorizontal = (angle >= 315 || angle < 45) || (angle >= 135 && angle < 225);
-        return isHorizontal ? StandardCursorType.SizeWestEast : StandardCursorType.SizeNorthSouth;
     }
 
     #endregion

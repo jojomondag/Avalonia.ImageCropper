@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(taskkill:*)",
+      "Bash(dotnet run:*)",
+      "Bash(powershell -Command:*)",
+      "mcp__filesystem__read_text_file",
+      "Bash(dotnet clean:*)",
+      "Bash(ping:*)"
+    ]
+  }
+}

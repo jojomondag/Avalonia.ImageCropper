@@ -77,4 +77,9 @@ public class CropSettings
     /// The Y offset of the image display.
     /// </summary>
     public double ImageDisplayOffsetY { get; set; }
+
+    /// <summary>
+    /// The zoom/scale level of the image.
+    /// </summary>
+    public double Scale { get; set; } = 1.0;
 }

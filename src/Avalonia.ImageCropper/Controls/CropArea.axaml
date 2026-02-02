@@ -7,15 +7,11 @@
              x:Class="Avalonia.ImageCropper.Controls.CropArea">
 
     <UserControl.Styles>
-        <Style Selector="Border.Handle">
-            <Setter Property="Width" Value="14"/>
-            <Setter Property="Height" Value="14"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#333333"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BoxShadow" Value="0 1 3 0 #40000000"/>
+        <!-- Crop circle border - clean Instagram style -->
+        <Style Selector="Border.CropCircle">
+            <Setter Property="BorderBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BoxShadow" Value="0 0 0 1 #40000000"/>
         </Style>
     </UserControl.Styles>
 
@@ -24,8 +20,7 @@
                 BorderBrush="#333333"
                 BorderThickness="1"
                 CornerRadius="8"
-                Background="White"
-                Cursor="Hand"
+                Background="#1a1a1a"
                 ClipToBounds="True"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch">
@@ -47,69 +42,45 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Image display -->
+                <!-- Image display - positioned via transform for pan/zoom/rotate -->
                 <Image Name="MainImage"
-                       Stretch="Uniform"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       IsVisible="False"/>
+                       Stretch="None"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Top"
+                       IsVisible="False"
+                       Cursor="Hand"/>
 
-                <!-- Crop overlay -->
+                <!-- Crop overlay with dark surround and circle cutout -->
                 <Grid Name="CropOverlay"
                       IsVisible="False"
                       Background="Transparent"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch"
-                      ClipToBounds="True">
+                      IsHitTestVisible="False">
 
-                    <!-- Overlay with cutout -->
+                    <!-- Dark overlay with circle cutout -->
                     <Path Name="OverlayCutout"
                           Fill="Black"
-                          Opacity="0.4"
+                          Opacity="0.6"
                           StrokeThickness="0"
                           IsHitTestVisible="False"/>
 
-                    <!-- Selection group -->
-                    <Grid Name="SelectionGroup"
-                          Width="200"
-                          Height="200"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Top">
-                        <Border Name="CropSelection"
-                                BorderBrush="White"
-                                BorderThickness="2"
-                                Background="Transparent"
-                                CornerRadius="100"
-                                Cursor="SizeAll"/>
-                        <Canvas Name="HandlesLayer" ClipToBounds="False">
-                            <Border Name="HandleTopLeft" Classes="Handle"/>
-                            <Border Name="HandleTopRight" Classes="Handle"/>
-                            <Border Name="HandleBottomLeft" Classes="Handle"/>
-                            <Border Name="HandleBottomRight" Classes="Handle"/>
-                        </Canvas>
-                    </Grid>
+                    <!-- Clean circle border - centered, fixed position -->
+                    <Border Name="CropCircle"
+                            Classes="CropCircle"
+                            Background="Transparent"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False"/>
                 </Grid>
 
-                <!-- Hover hint -->
-                <Border Name="HoverHintOverlay"
-                        IsVisible="False"
-                        Background="#CC000000"
-                        CornerRadius="8"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Bottom"
-                        Margin="0,0,0,16"
-                        Padding="16,12"
-                        IsHitTestVisible="False"
-                        ZIndex="1000">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <mi:MaterialIcon Kind="ImageEdit" Width="20" Height="20" Foreground="White"/>
-                        <TextBlock Text="Click to change image"
-                                   Foreground="White"
-                                   FontSize="14"
-                                   FontWeight="Medium"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                <!-- Interaction layer - captures all input -->
+                <Border Name="InteractionLayer"
+                        Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        Cursor="Hand"
+                        IsVisible="False"/>
             </Grid>
         </Border>
     </Border>

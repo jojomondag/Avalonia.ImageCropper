@@ -24,10 +24,8 @@ public partial class ImageGallery : UserControl
     public event EventHandler<string>? ImageSelected;
 
     /// <summary>
-    /// Event raised when an image is deleted.
+    /// Initializes a new instance of the <see cref="ImageGallery"/> class.
     /// </summary>
-    public event EventHandler<string>? ImageDeleted;
-
     public ImageGallery()
     {
         InitializeComponent();

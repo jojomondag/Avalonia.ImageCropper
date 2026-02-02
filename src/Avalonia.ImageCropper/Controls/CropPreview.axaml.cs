@@ -11,6 +11,7 @@ public partial class CropPreview : UserControl
 {
     private Image? _previewImage;
     private StackPanel? _actionsPanel;
+    private Border? _controlsHint;
     private Button? _backButton;
     private Button? _rotateLeftButton;
     private Button? _rotateRightButton;
@@ -48,6 +49,9 @@ public partial class CropPreview : UserControl
     /// </summary>
     public event EventHandler? CancelClicked;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CropPreview"/> class.
+    /// </summary>
     public CropPreview()
     {
         InitializeComponent();
@@ -58,6 +62,7 @@ public partial class CropPreview : UserControl
     {
         _previewImage = this.FindControl<Image>("PreviewImage");
         _actionsPanel = this.FindControl<StackPanel>("ActionsPanel");
+        _controlsHint = this.FindControl<Border>("ControlsHint");
         _backButton = this.FindControl<Button>("BackButton");
         _rotateLeftButton = this.FindControl<Button>("RotateLeftButton");
         _rotateRightButton = this.FindControl<Button>("RotateRightButton");
@@ -87,13 +92,17 @@ public partial class CropPreview : UserControl
     }
 
     /// <summary>
-    /// Shows or hides the action buttons.
+    /// Shows or hides the action buttons and controls hint.
     /// </summary>
     public void ShowActions(bool show)
     {
         if (_actionsPanel != null)
         {
             _actionsPanel.IsVisible = show;
+        }
+        if (_controlsHint != null)
+        {
+            _controlsHint.IsVisible = show;
         }
     }
 

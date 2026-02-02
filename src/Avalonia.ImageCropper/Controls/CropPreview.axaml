@@ -24,6 +24,21 @@
                        VerticalAlignment="Center"/>
             </Border>
 
+            <!-- Controls hint -->
+            <Border Name="ControlsHint"
+                    Background="#20000000"
+                    CornerRadius="4"
+                    Padding="8,4"
+                    Margin="0,0,0,8"
+                    IsVisible="False">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Controls:" FontSize="10" FontWeight="SemiBold" Foreground="#AAAAAA"/>
+                    <TextBlock Text="Drag image = Move" FontSize="9" Foreground="#888888"/>
+                    <TextBlock Text="Drag border = Rotate" FontSize="9" Foreground="#888888"/>
+                    <TextBlock Text="Scroll = Zoom" FontSize="9" Foreground="#888888"/>
+                </StackPanel>
+            </Border>
+
             <!-- Action Buttons -->
             <StackPanel Name="ActionsPanel"
                         Orientation="Horizontal"
@@ -38,17 +53,17 @@
                     <mi:MaterialIcon Kind="ArrowLeft" Width="20" Height="20"/>
                 </Button>
 
-                <!-- Rotate Left -->
+                <!-- Rotate Left (90 degrees) -->
                 <Button Name="RotateLeftButton"
                         Classes="secondary"
-                        ToolTip.Tip="Rotate Left">
+                        ToolTip.Tip="Rotate 90° Left">
                     <mi:MaterialIcon Kind="RotateLeft" Width="20" Height="20"/>
                 </Button>
 
-                <!-- Rotate Right -->
+                <!-- Rotate Right (90 degrees) -->
                 <Button Name="RotateRightButton"
                         Classes="secondary"
-                        ToolTip.Tip="Rotate Right">
+                        ToolTip.Tip="Rotate 90° Right">
                     <mi:MaterialIcon Kind="RotateRight" Width="20" Height="20"/>
                 </Button>
 

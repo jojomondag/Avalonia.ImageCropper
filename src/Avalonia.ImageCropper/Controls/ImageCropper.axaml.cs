@@ -90,7 +90,6 @@ public partial class ImageCropper : UserControl
         if (_imageGallery != null)
         {
             _imageGallery.ImageSelected += async (s, path) => await LoadImageAsync(path);
-            _imageGallery.ImageDeleted += OnImageDeleted;
         }
 
         Loaded += async (s, e) => await LoadGalleryAsync();
@@ -118,19 +117,6 @@ public partial class ImageCropper : UserControl
     private void OnCropChanged(object? sender, EventArgs e)
     {
         UpdatePreview();
-    }
-
-    private void OnImageDeleted(object? sender, string path)
-    {
-        if (File.Exists(path))
-        {
-            try
-            {
-                File.Delete(path);
-                _ = LoadGalleryAsync();
-            }
-            catch { }
-        }
     }
 
     private void ApplyOptions()
